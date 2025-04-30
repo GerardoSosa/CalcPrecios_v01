@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Calculadora de Precio de Venta</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js"></script>
+  <style>
+    body {
+      background-color: #f5f7fa;
+      font-family: 'Segoe UI', sans-serif;
+      color: #333;
+    }
+    .app-container {
+      max-width: 700px;
+      margin: 2rem auto;
+      background: #fff;
+      padding: 2rem;
+      border-radius: 1rem;
+      box-shadow: 0 0 15px rgba(0,0,0,0.1);
+    }
+    .result-box {
+      background-color: #e8f0fe;
+      padding: 1rem;
+      border-radius: 0.5rem;
+    }
+    .emoji {
+      font-size: 1.5rem;
+    }
+    table {
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="app-container animate__animated animate__fadeInDown">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 id="app-title">Calculadora de Precio de Venta</h3>
+        <select id="lang" class="form-select w-auto">
+          <option value="es" selected>🇲🇽 ES</option>
+          <option value="en">🇺🇸 EN</option>
+          <option value="fr">🇫🇷 FR</option>
+        </select>
+      </div>
+
+      <div class="mb-3">
+        <label for="product" class="form-label" id="label-product">Nombre del producto</label>
+        <input type="text" class="form-control" id="product">
+      </div>
+
+      <div class="mb-3">
+        <label for="cost" class="form-label" id="label-cost">Costo base ($MXN)</label>
+        <input type="number" class="form-control" id="cost" min="0" step="0.01">
+      </div>
+
+      <div class="mb-3">
+        <label for="margin" class="form-label" id="label-margin">% Ganancia deseada (máx. 50%)</label>
+        <input type="number" class="form-control" id="margin" min="0" max="50" step="0.1">
+      </div>
+
+      <button class="btn btn-primary w-100" onclick="calculate()" id="btn-calculate">Calcular 💡</button>
+
+      <div id="result" class="mt-4 result-box d-none animate__animated animate__fadeIn">
+        <h5 id="label-result-title">Resultado 📊</h5>
+        <p id="label-final-price">Precio sugerido: <strong id="final-price">$0.00</strong></p>
+        <p id="label-gain">Ganancia: <strong id="gain-amount">$0.00</strong></p>
+      </div>
+
+      <div class="mt-4">
+        <h5>📝 Productos calculados</h5>
+        <table class="table table-bordered table-striped" id="product-table">
+          <thead class="table-light">
+            <tr>
+              <th>Producto</th>
+              <th>Costo Base</th>
+              <th>Ganancia</th>
+              <th>Precio Sugerido</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <button class="btn btn-outline-success mt-2 me-2" onclick="exportToPDF()">📄 Exportar a PDF</button>
+        <button class="btn btn-outline-danger mt-2 me-2" onclick="clearTable()">🗑️ Limpiar tabla</button>
+        <button id="btn-actualizar-local" class="btn btn-outline-primary mt-2" style="display: none;" onclick="actualizarPreciosDesdeLocalStorage()">🔄 Actualizar precios desde localStorage</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const langData = {
+      es: {
+        title: "Calculadora de Precio de Venta",
+        labelProduct: "Nombre del producto",
+        labelCost: "Costo base ($MXN)",
+        labelMargin: "% Ganancia deseada (máx. 50%)",
+        btn: "Calcular 💡",
+        resultTitle: "Resultado 📊",
+        price: "Precio sugerido",
+        gain: "Ganancia"
+      },
+      en: {
+        title: "Selling Price Calculator",
+        labelProduct: "Product name",
+        labelCost: "Base cost ($MXN)",
+        labelMargin: "Desired profit % (max 50%)",
+        btn: "Calculate 💡",
+        resultTitle: "Result 📊",
+        price: "Suggested price",
+        gain: "Profit"
+      },
+      fr: {
+        title: "Calculateur de Prix de Vente",
+        labelProduct: "Nom du produit",
+        labelCost: "Coût de base ($MXN)",
+        labelMargin: "% de profit souhaité (max 50%)",
+        btn: "Calculer 💡",
+        resultTitle: "Résultat 📊",
+        price: "Prix suggéré",
+        gain: "Profit"
+      }
+    };
+
+    document.getElementById("lang").addEventListener("change", () => {
+      const lang = document.getElementById("lang").value;
+      const t = langData[lang];
+      document.getElementById("app-title").textContent = t.title;
+      document.getElementById("label-product").textContent = t.labelProduct;
+      document.getElementById("label-cost").textContent = t.labelCost;
+      document.getElementById("label-margin").textContent = t.labelMargin;
+      document.getElementById("btn-calculate").textContent = t.btn;
+      document.getElementById("label-result-title").textContent = t.resultTitle;
+      document.getElementById("label-final-price").childNodes[0].textContent = t.price + ": ";
+      document.getElementById("label-gain").childNodes[0].textContent = t.gain + ": ";
+    });
+
+    let productList = JSON.parse(localStorage.getItem("productos")) || [];
+
+    function renderTable() {
+      const tbody = document.querySelector("#product-table tbody");
+      tbody.innerHTML = "";
+      productList.forEach((p, index) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${p.nombre}</td>
+          <td>$${p.costo.toFixed(2)}</td>
+          <td>$${p.ganancia.toFixed(2)}</td>
+          <td>$${p.precio.toFixed(2)}</td>
+          <td><button class='btn btn-sm btn-danger' onclick='deleteProduct(${index})'>Eliminar</button></td>
+        `;
+        tbody.appendChild(row);
+      });
+      localStorage.setItem("productos", JSON.stringify(productList));
+      document.getElementById("btn-actualizar-local").style.display = productList.length > 0 ? "inline-block" : "none";
+    }
+
+    function calculate() {
+      const nombre = document.getElementById("product").value.trim();
+      const costo = parseFloat(document.getElementById("cost").value);
+      const margen = parseFloat(document.getElementById("margin").value);
+
+      if (!nombre || isNaN(costo) || isNaN(margen) || costo < 0 || margen < 0 || margen > 50) {
+        alert("Verifica los valores ingresados. El porcentaje debe ser entre 0 y 50 y el producto no debe estar vacío.");
+        return;
+      }
+
+      const ganancia = costo * (margen / 100);
+      const precio = costo + ganancia;
+
+      document.getElementById("final-price").textContent = `$${precio.toFixed(2)}`;
+      document.getElementById("gain-amount").textContent = `$${ganancia.toFixed(2)}`;
+      document.getElementById("result").classList.remove("d-none");
+
+      productList.push({ nombre, costo, ganancia, precio });
+      renderTable();
+    }
+
+    function deleteProduct(index) {
+      productList.splice(index, 1);
+      renderTable();
+    }
+
+    function clearTable() {
+      if (confirm("¿Estás seguro de que deseas borrar todos los productos?")) {
+        productList = [];
+        renderTable();
+      }
+    }
+
+    function exportToPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      doc.text("Productos calculados", 14, 20);
+
+      const rows = productList.map(p => [
+        p.nombre,
+        `$${p.costo.toFixed(2)}`,
+        `$${p.ganancia.toFixed(2)}`,
+        `$${p.precio.toFixed(2)}`
+      ]);
+
+      doc.autoTable({
+        head: [["Producto", "Costo Base", "Ganancia", "Precio Sugerido"]],
+        body: rows,
+        startY: 30
+      });
+
+      doc.save("productos_calculados.pdf");
+    }
+
+    function actualizarPreciosDesdeLocalStorage() {
+      const almacenados = JSON.parse(localStorage.getItem("productos"));
+      if (!almacenados || almacenados.length === 0) {
+        alert("No hay productos guardados en localStorage.");
+        return;
+      }
+      productList = almacenados;
+      renderTable();
+      alert("Precios actualizados desde localStorage.");
+    }
+
+    renderTable();
+  </script>
+</body>
+</html>
